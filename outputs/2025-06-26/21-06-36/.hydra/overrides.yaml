@@ -1,0 +1,4 @@
+- mode=evaluate
+- model.language_tower.model_name=sshleifer/tiny-gpt2
+- model.language_tower.use_8bit=false
+- model.language_tower.is_frozen=true

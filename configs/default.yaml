@@ -1,0 +1,22 @@
+# @package _global_
+
+# Default configuration values
+defaults:
+  - model: gia_8b
+  - training: pretrain_grounding
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
+
+# General settings
+project_name: "GroundedInterfaceAgent"
+seed: 42
+checkpoint_path: null
+mode: "train" # train, evaluate, inference
+
+# Mixed precision flag (module-level FP16 + autocast)
+use_mixed_precision: false
+use_bfloat16: false
+use_grad_checkpoint: false
+
+# Inference specific settings
+instruction: "Click the start button." 

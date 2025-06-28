@@ -1,0 +1,36 @@
+# Core
+torch
+transformers>=4.48.0  # tested with 4.49.dev0 as of 2025-06
+huggingface-hub
+accelerate
+bitsandbytes # For 8-bit/4-bit quantization
+
+# Vision
+Pillow
+
+# Config Management
+PyYAML
+hydra-core
+hydra-colorlog
+
+# Data
+pandas
+pyarrow
+
+# Environment / OS Interaction
+pyautogui 
+pyscreenshot
+
+# For Progress Bars
+tqdm 
+
+# High-speed Windows input backend (optional, installed from GitHub)
+git+https://github.com/winstxnhdw/KeyWin.git 
+
+# Parameter-efficient fine-tuning
+peft>=0.10.0 
+
+hydra-core
+tensorboard
+fastapi
+uvicorn[standard]

@@ -1,0 +1,53 @@
+# /configs/model/gia_8b.yaml
+language_tower:
+  _target_: models.towers.language_tower.LanguageTower
+  model_name: "meta-llama/Meta-Llama-3-8B"
+  max_new_tokens: 256
+  is_frozen: true
+  use_8bit: true
+
+perception_tower:
+  _target_: models.towers.perception_tower.PerceptionTower
+  model_name: null     # 軽量 CNN プレースホルダ
+  is_frozen: true
+
+action_tower:
+  _target_: models.towers.action_tower.ActionTower
+  latent_state_dim: 4096  # From Bridge/Fusion
+  latent_action_dim: 256
+  concrete_action_dim: 4
+  warp_output_dim: 16
+
+perception_decoder:
+  _target_: models.decoders.perception_decoder.PerceptionDecoder
+  input_dim: 4096 # Should match the common embedding space dim
+
+spacetime_encoder:
+  _target_: models.dynamics.spacetime_encoder.SpacetimeEncoder
+  input_dim: 16 # extended warp vector
+  output_dim: 4096
+
+spacetime_decoder:
+  _target_: models.dynamics.spacetime_decoder.SpacetimeDecoder
+  input_dim: 4096
+  output_dim: 16
+
+# --- Dreamer Components ---
+transition_model:
+  _target_: models.dreamer.transition_model.TransitionModel
+  latent_state_dim: 4096
+  latent_action_dim: 256
+
+reward_head:
+  _target_: models.dreamer.reward_head.RewardHead
+  latent_state_dim: 4096
+
+value_head:
+  _target_: models.dreamer.value_head.ValueHead
+  latent_state_dim: 4096
+
+bridge:
+  _target_: models.bridge.grounding_bridge.GroundingBridge
+  type: CrossAttention
+  num_layers: 4
+  hidden_dim: 4096 

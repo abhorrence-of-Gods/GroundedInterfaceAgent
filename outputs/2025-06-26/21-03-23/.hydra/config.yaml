@@ -1,0 +1,94 @@
+model:
+  language_tower:
+    _target_: models.towers.language_tower.LanguageTower
+    model_name: meta-llama/Meta-Llama-3-8B
+    max_new_tokens: 256
+    is_frozen: true
+    use_8bit: true
+  perception_tower:
+    _target_: models.towers.perception_tower.PerceptionTower
+    model_name: ByteDance-Seed/UI-TARS-1.5-7B
+    is_frozen: true
+  action_tower:
+    _target_: models.towers.action_tower.ActionTower
+    latent_state_dim: 4096
+    latent_action_dim: 256
+    concrete_action_dim: 4
+  perception_decoder:
+    _target_: models.decoders.perception_decoder.PerceptionDecoder
+    input_dim: 4096
+  spacetime_encoder:
+    _target_: models.dynamics.spacetime_encoder.SpacetimeEncoder
+    input_dim: 2
+    output_dim: 4096
+  spacetime_decoder:
+    _target_: models.dynamics.spacetime_decoder.SpacetimeDecoder
+    input_dim: 4096
+    output_dim: 2
+  transition_model:
+    _target_: models.dreamer.transition_model.TransitionModel
+    latent_state_dim: 4096
+    latent_action_dim: 256
+  reward_head:
+    _target_: models.dreamer.reward_head.RewardHead
+    latent_state_dim: 4096
+  value_head:
+    _target_: models.dreamer.value_head.ValueHead
+    latent_state_dim: 4096
+  bridge:
+    _target_: models.bridge.grounding_bridge.GroundingBridge
+    type: CrossAttention
+    num_layers: 4
+    hidden_dim: 4096
+training:
+  lr:
+    language_tower: 1.0e-05
+    perception_tower: 1.0e-05
+    action_tower: 0.0001
+    bridge: 0.0001
+  optimizer:
+    _target_: torch.optim.AdamW
+    lr: 1.0e-05
+    weight_decay: 0.01
+    eps: 1.0e-08
+  scheduler:
+    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    T_max: 100
+  loss_weights:
+    action_imitation_loss: 1.0
+    contrastive_loss_pl: 1.0
+    contrastive_loss_pa: 0.5
+    contrastive_loss_pw: 0.5
+    contrastive_loss_la: 0.5
+    contrastive_loss_lw: 1.0
+    contrastive_loss_aw: 0.5
+    generative_loss_p_from_l: 0.2
+    generative_loss_p_from_a: 0.2
+    generative_loss_p_from_w: 0.2
+    generative_loss_a_from_p: 0.2
+    generative_loss_a_from_l: 0.2
+    generative_loss_a_from_w: 0.2
+    generative_loss_l_from_p: 0.0
+    generative_loss_l_from_a: 0.0
+    generative_loss_l_from_w: 0.0
+    generative_loss_w_from_p: 0.2
+    generative_loss_w_from_l: 0.2
+    generative_loss_w_from_a: 0.2
+  lr_groups:
+    language_tower: 1.0e-06
+    perception_tower: 1.0e-05
+    action_tower: 1.0e-05
+    bridge: 1.0e-05
+    perception_decoder: 1.0e-05
+  batch_size: 32
+  num_epochs: 100
+  grad_accumulation_steps: 1
+  logging_steps: 10
+  max_grad_norm: 1.0
+  generative_warmup_epochs: 5
+project_name: GroundedInterfaceAgent
+seed: 42
+checkpoint_path: null
+mode: evaluate
+use_mixed_precision: false
+instruction: Click the start button.

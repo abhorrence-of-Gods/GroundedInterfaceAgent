@@ -1,0 +1,29 @@
+# /configs/training/finetune_rl.yaml
+# Settings for the reinforcement learning fine-tuning phase.
+# This phase focuses on improving task completion by learning a high-level policy.
+
+# Learning rates for different components
+# Typically, we only train the Language Tower (as the planner) and the Bridge.
+lr:
+  language_tower: 1e-6 # Very low LR for fine-tuning the LLM
+  bridge: 5e-5
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 1e-6 # Default LR
+  weight_decay: 0.01
+
+# RL Algorithm settings (e.g., PPO)
+ppo:
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+
+# Training loop settings
+total_timesteps: 1_000_000
+logging_steps: 100
+eval_freq: 10_000 

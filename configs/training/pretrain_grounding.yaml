@@ -1,0 +1,90 @@
+# /configs/training/pretrain_grounding.yaml
+# Settings for the grounding pre-training phase.
+# This phase focuses on aligning the representations between the Language and Perception towers.
+
+# Learning rates for different components
+lr:
+  language_tower: 1e-5 # If not frozen
+  perception_tower: 1e-5 # If not frozen
+  action_tower: 0.0001
+  bridge: 0.0001
+  lora: 1e-5
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 1e-5 # This is just a placeholder, it will be overridden by param groups
+  weight_decay: 0.01
+  eps: 1.0e-08
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  T_max: 100 # Number of epochs
+
+# Loss weights
+loss_weights:
+  # Primary loss for learning the main task
+  action_imitation_loss: 1.0 
+  
+  # 6 Contrastive losses for a 4-modality setup (4 choose 2)
+  contrastive_loss_pl: 1.0 # Perception <-> Language
+  contrastive_loss_pa: 0.5 # Perception <-> Action
+  contrastive_loss_pw: 0.5 # Perception <-> Warp
+  contrastive_loss_la: 0.5 # Language  <-> Action
+  contrastive_loss_lw: 1.0 # Language  <-> Warp
+  contrastive_loss_aw: 0.5 # Action    <-> Warp
+  
+  # Hard negative contrastive losses (margin ranking)
+  contrastive_hn_loss_pl: 0.2
+  contrastive_hn_loss_pa: 0.1
+  contrastive_hn_loss_al: 0.1
+  
+  # 12 Generative losses (A->B means B is generated from A)
+  generative_loss_p_from_l: 0.2
+  generative_loss_p_from_a: 0.2
+  generative_loss_p_from_w: 0.2
+  generative_loss_a_from_p: 0.2
+  generative_loss_a_from_l: 0.2
+  generative_loss_a_from_w: 0.2
+  generative_loss_l_from_p: 0.0 # Not implemented
+  generative_loss_l_from_a: 0.0 # Not implemented
+  generative_loss_l_from_w: 0.0 # Not implemented
+  generative_loss_w_from_p: 0.2
+  generative_loss_w_from_l: 0.2
+  generative_loss_w_from_a: 0.2
+  uncertainty_loss: 0.1
+  spacewarp_loss: 0.1
+  goalwarp_logdet: 0.01
+
+# Group-specific learning rates, moved here to avoid being consumed by Hydra's instantiate
+lr_groups:
+  language_tower: 1e-6
+  perception_tower: 1e-5
+  action_tower: 1e-5
+  bridge: 1e-5
+  perception_decoder: 1e-5
+
+# Training loop settings
+batch_size: 32
+num_epochs: 100
+grad_accumulation_steps: 1
+logging_steps: 10
+max_grad_norm: 1.0 # For gradient clipping to prevent exploding gradients in half-precision 
+
+# Warm-up epochs for generative losses (linearly scaled 0→1)
+generative_warmup_epochs: 5 
+
+# Entropy regularization coefficient for Dreamer Actor
+entropy_coeff: 0.003 
+
+# time warp uncertainty
+alpha_timewarp: 0.5
+
+# Early stopping
+early_stop_patience: 10 
+
+# Path to synthetic dataset (set to null to use dummy data)
+dataset_roots: []
+dataset_weights: []
+
+# Expected warp vector dimension (for padding/truncating)
+expected_warp_dim: 16 

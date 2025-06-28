@@ -1,0 +1,5 @@
+- mode=inference
+- instruction=Test click
+- model.language_tower.model_name=hf-internal-testing/tiny-random-LlamaConfig
+- model.language_tower.use_8bit=false
+- model.language_tower.is_frozen=true

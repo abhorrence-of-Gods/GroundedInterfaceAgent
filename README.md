@@ -116,6 +116,27 @@ This architecture allows the agent to not only perceive and act, but also to dyn
 
 ## Setup
 
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/your-username/GroundedInterfaceAgent.git
+    cd GroundedInterfaceAgent
+    ```
+
+2.  **Install Dependencies**
+
+    This project has two sets of requirements, one for the core agent and one for the OSWorld evaluation environment. Install both:
+    ```bash
+    # Install main dependencies
+    pip install -r requirements.txt
+
+    # Install OSWorld-specific dependencies
+    pip install -r OSWorld/requirements.txt
+    ```
+
+## Quickstart
+
+### Training (GPU)
+
 ### 1. Environment
 We recommend a Python 3.10+ environment.
     ```bash

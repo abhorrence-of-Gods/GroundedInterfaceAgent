@@ -57,6 +57,63 @@ graph TD
     Goal --> GoalWarp
 ```
 
+## GIA-Dreamer Architecture
+
+The agent's architecture is built upon three core pillars: a **World Model** that understands the environment, a **Dreamer** that learns behaviors through imagined scenarios, and novel **Warp Modules** that dynamically reshape the model's internal understanding of time, space, and goals.
+
+```mermaid
+graph TD
+    subgraph "Phase 1: World Model Learning (from Real Data)"
+        direction LR
+        Obs[Raw Observation<br>(Screenshot, Instruction)] --> WM_Enc[World Model Encoders]
+        WM_Enc --> Latent_H[Latent State h_t]
+        Latent_H --> WM_Dec[World Model Decoders]
+        WM_Dec --> Reconstruction_Loss[Reconstruction &<br>Contrastive Losses]
+    end
+
+    subgraph "Phase 2: Actor-Critic Learning (in Dream)"
+        direction LR
+        Dream_Start[Start from h_t] --> Plan[Plan in Dream<br>using Transition Model]
+        Plan --> Trajectory[Imagined Trajectory<br>(States, Actions, Rewards)]
+        Trajectory --> AC_Update[Update Actor & Critic<br>via λ-returns]
+    end
+
+    Obs -- "1. Collect Experience" --> WM_Enc
+    WM_Enc -- "2. Start Dream From" --> Dream_Start
+    AC_Update -- "3. Generate Action" --> Action[Execute Action in Env]
+    Action -- " " --> Obs
+
+```
+
+### 1. World Model (The Observer)
+The World Model is responsible for perceiving the environment and grounding different modalities into a shared representational space.
+
+*   **Towers**:
+    *   **Language Tower**: A Large Language Model (e.g., Llama-3-8B) to encode textual instructions.
+    *   **Perception Tower**: A Vision Transformer (e.g., UI-TARS Vision) to encode screenshots.
+    *   **Action & Spacetime Towers**: MLPs to encode action and warp vectors.
+*   **Grounding Bridge**: A cross-attention mechanism that fuses language and vision features into a unified latent state `h_t`.
+*   **Decoders**: A suite of decoders that reconstruct one modality from another, enabling a comprehensive, multi-objective loss function.
+
+### 2. Dreamer (The Planner)
+Instead of learning directly from expensive real-world interactions, the agent learns behaviors by "dreaming" within its learned World Model.
+
+*   **Transition Model**: Predicts the next latent state `h_{t+1}` given the current state `h_t` and a latent action `a_t`.
+*   **Reward & Value Heads**: Predict the expected reward and state-value for any imagined state.
+*   **Actor-Critic**:
+    *   The **Actor** learns a policy to select actions that maximize future rewards within the dream.
+    *   The **Critic** (Value Head) learns to accurately predict the long-term value of being in a certain state.
+    This process, based on λ-returns, allows for efficient and far-sighted policy learning.
+
+### 3. Warp Modules (The Reality Shaper)
+This is the core novelty of the architecture. Warp modules are dynamic, learnable transformations that alter the model's internal "coordinate system" to improve learning and task execution.
+
+*   **GoalWarp (Real-NVP)**: A normalizing flow that reshapes the latent space based on a `goal` vector (e.g., target coordinates and UI element type). This makes it easier for the model to attend to relevant information for a given goal. Its Jacobian determinant is used as a regularization loss.
+*   **Time/Uncertainty Warp**: A module that stretches or compresses the model's internal sense of time. It learns to "slow down" and allocate more computational resources when uncertainty (proxied by TD-error) is high.
+*   **SpaceWarp**: Injects coordinate information directly into the vision features, helping to ground visual elements spatially.
+
+This architecture allows the agent to not only perceive and act, but also to dynamically adapt its internal world representation for more efficient and intelligent problem-solving.
+
 ## Setup
 
 ### 1. Environment

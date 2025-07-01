@@ -37,14 +37,14 @@ graph TD
         direction LR
         SpaceWarp --> Bridge
         Language --> Bridge
-        Bridge -->|"Fused State (z)"| GoalWarp(z, g)
+        Bridge -->|"Fused State (z)"| GoalWarp
     end
-    
+
     subgraph "C. Dreamer Components"
         direction LR
-        GoalWarp --> Actor_Policy[Actor Policy π(a|z)]
-        GoalWarp --> Critic_Value[Value Head V(z)]
-        Actor_Policy -->|Latent Action| Transition_Model[Transition Model T(z'|z,a)]
+        GoalWarp --> Actor_Policy["Actor Policy: pi(a|z)"]
+        GoalWarp --> Critic_Value["Value Head: V(z)"]
+        Actor_Policy -->|Latent Action| Transition_Model["Transition Model: T(z'|z,a)"]
         Transition_Model --> Dream_Loop[Dream Trajectory]
     end
 

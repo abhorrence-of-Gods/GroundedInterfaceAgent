@@ -50,7 +50,9 @@ class DreamerTrainer:
             list(model.action_tower.action_encoder.parameters()) +
             list(model.action_tower.action_decoder.parameters()) +
             list(model.transition_model.parameters()) +
-                                  list(model.reward_head.parameters())
+            list(model.reward_head.parameters()) +
+            # Include GoalWarp so that its parameters (and Jacobian regularization) can be optimised
+            list(model.goal_warp.parameters())
         )
         
         # 2) Actor-Critic (policy + value); only actor_network participates
@@ -117,11 +119,24 @@ class DreamerTrainer:
             self._best_val = ckpt.get("val_loss", float("inf"))
             print(f"[DreamerTrainer] Resumed from checkpoint {ckpt_path_cfg} (epoch {self.start_epoch})")
 
+        # ---- Logging & timing ----
+        self.log_interval: int = int(self.cfg.training.get("log_interval", 100))  # how many batches between console prints
+        self._step_counter: int = 0  # global batch counter across epochs
+        import time  # local import to avoid modifying global header imports unnecessarily
+        self._train_start_time: float = time.time()
+
+        # ---- Derived training sizes ----
+        self.steps_per_epoch: int = len(self.dataloader)
+        self.total_steps: int = self.steps_per_epoch * int(cfg.training.num_epochs)
+
     def train(self):
         """The main training loop."""
         print("Starting Dreamer training...")
+        import time
+        overall_start = time.time()
         for epoch in range(self.start_epoch, self.cfg.training.num_epochs):
             print(f"--- Epoch {epoch+1}/{self.cfg.training.num_epochs} ---")
+            epoch_start = time.time()
             
             # --- Phase 1: Learn World Model from Real Data ---
             self.model.train()
@@ -137,7 +152,7 @@ class DreamerTrainer:
             accum_steps = int(self.cfg.training.get("grad_accumulation_steps", 1))
             for idx, batch in enumerate(self.dataloader):
                 with autocast(device_type='cuda', dtype=self._mp_dtype) if torch.cuda.is_available() else nullcontext():
-                    loss = self._learn_world_model(batch, gen_scale)
+                    loss, extra = self._learn_world_model(batch, gen_scale)
                     loss = loss / accum_steps
 
                 if (idx % accum_steps) == 0:
@@ -149,15 +164,22 @@ class DreamerTrainer:
                     torch.nn.utils.clip_grad_norm_(self.world_model_params, 1.0)
                 self.wm_optimizer.step()
 
+                # ------- Console logging (throttled) -------
+                if self._step_counter % self.log_interval == 0:
+                    # Compose breakdown string from extra dict
+                    breakdown = " | ".join([f"{k}: {v:.4f}" for k, v in extra.items()])
+                    print(f"[Step {self._step_counter}/{self.total_steps}] WM Loss: {loss.item()*accum_steps:.4f} | {breakdown}")
+                self._step_counter += 1
+
             # --- Phase 2: Learn Actor & Critic in Dreams ---
             self.model.eval()  # freeze world-model during AC updates
             initial_batch = next(iter(self.dataloader)) 
 
             ac_updates = int(self.cfg.training.get("ac_updates", 5))
             for _ in range(ac_updates):
+            self.ac_optimizer.zero_grad()
                 with autocast(device_type='cuda', dtype=self._mp_dtype) if torch.cuda.is_available() else nullcontext():
                     ac_loss = self._learn_actor_critic(initial_batch)
-            self.ac_optimizer.zero_grad()
                 ac_loss.backward()
             self.ac_optimizer.step()
 
@@ -198,17 +220,23 @@ class DreamerTrainer:
                     if self._no_improve_epochs >= self._patience:
                         print(f"[DreamerTrainer] Early stopping: no improvement for {self._patience} epochs.")
                         break
+
+            # ---- Epoch timing ----
+            epoch_dur = time.time() - epoch_start
+            print(f"[Timing] Epoch {epoch+1} took {epoch_dur:.1f} sec ({epoch_dur/60:.2f} min)")
+
         print("Training finished.")
+        total_dur = time.time() - overall_start
+        print(f"[Timing] Total training time: {total_dur/3600:.2f} h ({total_dur/60:.1f} min)")
         self.writer.close()
 
-
-    def _learn_world_model(self, batch: dict, gen_scale: float = 1.0) -> torch.Tensor:
+    def _learn_world_model(self, batch: dict, gen_scale: float = 1.0):
         """
         Learns all the encoding, decoding, transition, and reward models.
         This uses the grand 19-objective loss function.
         """
         # Implement the full 19-objective loss using the helper from engine.trainer.
-        print("Phase 1: Learning World Model...")
+        # Throttled verbose print handled in train() loop
 
         # --- Move batch tensors to correct device/dtype ---
         batch_device = {
@@ -235,7 +263,7 @@ class DreamerTrainer:
                 loss_weights_scaled[k] = loss_weights_scaled[k] * gen_scale
 
         # Compute the comprehensive loss (19 objectives)
-        loss, _ = calculate_comprehensive_loss(
+        loss_base, loss_dict = calculate_comprehensive_loss(
             model_outputs=model_outputs,
             batch=batch_device,
             loss_weights=loss_weights_scaled,
@@ -257,9 +285,13 @@ class DreamerTrainer:
             td_error = torch.abs(reward_pred + value_next - value_curr)
         l_uncert = torch.nn.functional.mse_loss(sigma_u, td_error)
         w_uncert = self.cfg.training.loss_weights.get("uncertainty_loss", 0.0)
-        total_loss = loss + w_uncert * l_uncert
-        return total_loss
 
+        # Append uncertainty loss value to dict for logging
+        if w_uncert > 0:
+            loss_dict["Uncert"] = l_uncert.item()
+
+        total_loss = loss_base + w_uncert * l_uncert
+        return total_loss, loss_dict
 
     def _learn_actor_critic(self, initial_batch: dict) -> torch.Tensor:
         """
@@ -301,12 +333,12 @@ class DreamerTrainer:
             gvec = initial_batch["goal"].to(self.device)
             # compute log|detJ| for each initial state (detached to keep AC grads separate)
             _, gld = self.model.goal_warp(initial_state.detach(), gvec, return_logdet=True)
-            actor_loss = actor_loss + gw_coeff * gld.mean()
+            actor_loss = actor_loss + gw_coeff * gld.abs().mean()
 
         # 5. Critic loss (value function)
         value_pred = values.squeeze(-1)  # (H,B)
         critic_loss = torch.nn.functional.mse_loss(value_pred, lambda_returns.squeeze(-1).detach())
-
+        
         total_ac_loss = actor_loss + critic_loss
         return total_ac_loss
 

@@ -8,14 +8,17 @@ def main():
     parser.add_argument("--domain", default="all", help="Single domain or 'all'")
     parser.add_argument("--result_dir", default="osworld_results", help="Directory to store results")
     parser.add_argument("--max_steps", type=int, default=15)
+    parser.add_argument("--provider", default="docker", help="vmware | docker | virtualbox | none")
     args = parser.parse_args()
 
     result_dir = Path(args.result_dir)
     result_dir.mkdir(parents=True, exist_ok=True)
+    osworld_dir = Path(__file__).parent.parent / "OSWorld"
+    (osworld_dir / "logs").mkdir(exist_ok=True)
 
     cmd = [
         sys.executable,
-        str(Path(__file__).parent.parent / "OSWorld/run.py"),
+        str(osworld_dir / "run.py"),
         "--model", "gia",
         "--ckpt", str(Path(args.ckpt).resolve()),
         "--result_dir", str(result_dir.resolve()),
@@ -25,9 +28,11 @@ def main():
         cmd += ["--path_to_vm", args.vm_path]
     if args.domain != "all":
         cmd += ["--domain", args.domain]
+    if args.provider:
+        cmd += ["--provider", args.provider]
 
     print("[OSWorld Eval] Running:", " ".join(cmd))
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, cwd=osworld_dir)
 
     # Aggregate success rate
     success = []

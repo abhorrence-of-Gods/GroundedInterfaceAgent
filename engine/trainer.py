@@ -7,6 +7,7 @@ from datetime import datetime
 from omegaconf import DictConfig
 from contextlib import nullcontext
 from torch.utils.tensorboard import SummaryWriter
+import time
 try:
     # torch >= 2.1 推奨 API
     from torch.amp import autocast  # type: ignore
@@ -164,15 +165,14 @@ def calculate_comprehensive_loss(model_outputs: dict, batch: dict, loss_weights:
     # Goal warp logdet regularization
     if hasattr(w, "goalwarp_logdet") and w.goalwarp_logdet > 0 and model_outputs.get("goal_logdet") is not None:
         gld = model_outputs["goal_logdet"]
-        goal_loss = gld.mean()
+        # Penalise both expansion (positive) and compression (negative) equally
+        goal_loss = gld.abs().mean()
         total_loss += w.goalwarp_logdet * goal_loss
-        loss_dict["GoalLogDet"] = goal_loss.item()
+        loss_dict["GoalLogDet"] = goal_loss.item() if 'goal_loss' in locals() else 0
 
-    if total_loss.requires_grad:
-        log_items = [f"Total: {total_loss.item():.4f}"] + [f"{k}: {v:.4f}" for k, v in loss_dict.items()]
-        log_msg = " | ".join(log_items)
-        print(log_msg)
-        
+    # Logging of loss breakdown is now handled in DreamerTrainer; suppress
+    # redundant console output here to keep stdout concise.
+
     return total_loss, loss_dict
 
 class Trainer:
@@ -332,20 +332,31 @@ class Trainer:
         # Goal warp logdet regularization
         if hasattr(w, "goalwarp_logdet") and w.goalwarp_logdet > 0 and model_outputs.get("goal_logdet") is not None:
             gld = model_outputs["goal_logdet"]
-            total_loss += w.goalwarp_logdet * gld.mean()
+            # Penalise both expansion (positive) and compression (negative) equally
+            goal_loss = gld.abs().mean()
+            total_loss += w.goalwarp_logdet * goal_loss
 
-        print(f"Total: {total_loss.item():.4f} | Imit: {imitation_loss.item():.4f} | C(PL): {loss_pl.item():.4f} | G(P<-L): {gen_p_from_l.item():.4f}")
+        # ---- Throttled console logging ----
+        if not hasattr(self, "_log_counter"):
+            self._log_counter = 0  # type: ignore
+        self._log_counter += 1  # type: ignore
+        log_interval = int(self.cfg.training.get("log_interval", 100)) if hasattr(self, "cfg") else 100  # type: ignore
+        if self._log_counter % log_interval == 0:
+            print(f"Total: {total_loss.item():.4f} | Imit: {imitation_loss.item():.4f} | C(PL): {loss_pl.item():.4f} | G(P<-L): {gen_p_from_l.item():.4f}")
+
         return total_loss, {
             "Imitation": imitation_loss.item(),
             "SpaceWarp": sw_loss.item() if 'sw_loss' in locals() else 0,
-            "GoalLogDet": gld.mean().item() if 'gld' in locals() else 0,
+            "GoalLogDet": goal_loss.item() if 'goal_loss' in locals() else 0,
         }
         
     def train(self):
         self.model.train()
         print("Starting Quaternity Generative Architecture training...")
+        train_start_time = time.time()
         for epoch in range(self.start_epoch, self.cfg.training.num_epochs):
             print(f"Epoch {epoch+1}/{self.cfg.training.num_epochs}")
+            epoch_start_time = time.time()
             
             # Determine generative scaling factor
             warm_epochs = self.cfg.training.get("generative_warmup_epochs", 0)
@@ -437,6 +448,10 @@ class Trainer:
             
             print(f"Epoch {epoch+1} finished.")
 
+            # ---- Epoch timing ----
+            epoch_dur = time.time() - epoch_start_time
+            print(f"[Timing] Epoch {epoch+1} took {epoch_dur:.1f} sec ({epoch_dur/60:.2f} min)")
+
             # -------- Validation --------
             val_loss = self._validate(epoch)
             print(f"Validation loss: {val_loss:.4f}")
@@ -472,6 +487,8 @@ class Trainer:
                         break
 
         print("Training finished.")
+        total_dur = time.time() - train_start_time
+        print(f"[Timing] Total training time: {total_dur/3600:.2f} h ({total_dur/60:.1f} min)")
         self.writer.close()
 
     def _validate(self, epoch: int) -> float:
